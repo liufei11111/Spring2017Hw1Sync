@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.TreeSet;
 
 public class Index {
 
@@ -295,47 +296,50 @@ public class Index {
   private static void printList(String des, List<Integer> list){
     String str = "";
     for (Integer num : list){
-      str += num+" ";
+      str += (num +" ");
     }
-    System.err.println(des+str);
+    System.out.println(des+str);
   }
   private static PostingList collisonForPostingLists(PostingList list1, PostingList list2) {
-    List<Integer> merged = new LinkedList<>();
-    Iterator<Integer> list1itr = list1.getList().iterator();
-    Iterator<Integer> list2itr = list2.getList().iterator();
-    Integer head1 = null;
-    Integer head2 = null;
-    printList("List1: "+ list1.getTermId(), list1.getList());
-    printList("List2: "+list2.getTermId(), list2.getList());
-    while((head1 != null || list1itr.hasNext()) && (head2 != null) || list2itr.hasNext()){
-      head1 = head1 == null ? list1itr.next() : head1;
-      head2 = head2 == null ? list2itr.next() : head2;
-      if (head1.equals(head2)){
-        merged.add(head1);
-        head1 = null;
-        head2 = null;
-      }else if (head1 < head2){
-        merged.add(head1);
-        head1 = null;
-      }else{
-        merged.add(head2);
-        head2 = null;
-      }
-    }
-    if (head1 != null){
-      merged.add(head1);
-      while(list1itr.hasNext()){
-        merged.add(list1itr.next());
-      }
-    }
-    if (head2 != null){
-      merged.add(head2);
-      while(list2itr.hasNext()){
-        merged.add(list2itr.next());
-      }
-    }
-    printList("after merge:  ", merged);
-    return new PostingList(list1.getTermId(), merged);
+    TreeSet<Integer> set = new TreeSet<>(list1.getList());
+    set.addAll(list2.getList());
+    return new PostingList(list1.getTermId(),new LinkedList<Integer>(set));
+//    List<Integer> merged = new LinkedList<>();
+//    Iterator<Integer> list1itr = list1.getList().iterator();
+//    Iterator<Integer> list2itr = list2.getList().iterator();
+//    Integer head1 = null;
+//    Integer head2 = null;
+//    printList("List1: "+ list1.getTermId(), list1.getList());
+//    printList("List2: "+list2.getTermId(), list2.getList());
+//    while((head1 != null || list1itr.hasNext()) && (head2 != null) || list2itr.hasNext()){
+//      head1 = head1 == null ? list1itr.next() : head1;
+//      head2 = head2 == null ? list2itr.next() : head2;
+//      if (head1.equals(head2)){
+//        merged.add(head1);
+//        head1 = null;
+//        head2 = null;
+//      }else if (head1 < head2){
+//        merged.add(head1);
+//        head1 = null;
+//      }else{
+//        merged.add(head2);
+//        head2 = null;
+//      }
+//    }
+//    if (head1 != null){
+//      merged.add(head1);
+//      while(list1itr.hasNext()){
+//        merged.add(list1itr.next());
+//      }
+//    }
+//    if (head2 != null){
+//      merged.add(head2);
+//      while(list2itr.hasNext()){
+//        merged.add(list2itr.next());
+//      }
+//    }
+//    printList("after merge:  ", merged);
+//    return new PostingList(list1.getTermId(), merged);
   }
 
   private static List<PostingList> parsePostingList(RandomAccessFile bf1) {
