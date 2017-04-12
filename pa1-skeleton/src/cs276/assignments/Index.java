@@ -294,13 +294,6 @@ public class Index {
       }
     }
   }
-  private static void printList(String des, List<Integer> list){
-    String str = "";
-    for (Integer num : list){
-      str += (num +" ");
-    }
-    System.out.println(des+str);
-  }
   private static PostingList collisonForPostingLists(PostingList list1, PostingList list2) {
 //    TreeSet<Integer> set = new TreeSet<>(list1.getList());
 //    set.addAll(list2.getList());
@@ -310,8 +303,9 @@ public class Index {
     Iterator<Integer> list2itr = list2.getList().iterator();
     Integer head1 = null;
     Integer head2 = null;
-    printList("List1: "+ list1.getTermId(), list1.getList());
-    printList("List2: "+list2.getTermId(), list2.getList());
+//    printList("List1: "+ list1.getTermId(), list1.getList());
+//    printList("List2: "+list2.getTermId(), list2.getList());
+//    System.out.println("Before::"+list1.toString()+list2.toString());
     while((head1 != null || list1itr.hasNext()) && (head2 != null) || list2itr.hasNext()){
       head1 = head1 == null ? list1itr.next() : head1;
       head2 = head2 == null ? list2itr.next() : head2;
@@ -339,7 +333,7 @@ public class Index {
         merged.add(list2itr.next());
       }
     }
-    printList("after merge:  ", merged);
+//    printList("after merge:  ", merged);
     return new PostingList(list1.getTermId(), merged);
   }
 
