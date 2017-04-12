@@ -11,10 +11,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.LinkedList;
@@ -212,8 +215,11 @@ public class Index {
 
     // starting from the beginning of the file again
     // TODO: create sorted by freq after this work
-    polulatedPostDick(indexFile, postingDict);
-    indexFile.renameTo(new File(output, "corpus.index"));
+    RandomAccessFile finalRandom = new RandomAccessFile(new File(output,"corpus.index"), "rw");
+    reorderAndPolulatedPostDick(indexFile, postingDict, finalRandom.getChannel());
+    finalRandom.close();
+    indexFile.delete();
+//    indexFile.renameTo(new File(output, "corpus.index"));
     BufferedWriter termWriter = new BufferedWriter(new FileWriter(new File(
         output, "term.dict")));
     for (String term : termDict.keySet()) {
@@ -237,10 +243,34 @@ public class Index {
     postWriter.close();
   }
 
-  private static void polulatedPostDick(File indexFile,
-      Map<Integer, Pair<Long, Integer>> postingDict) throws Throwable {
-    RandomAccessFile finalRAF = new RandomAccessFile(indexFile,"r");
-    FileChannel combinedFC = finalRAF.getChannel();
+  private static void reorderAndPolulatedPostDick(File indexFile,
+      Map<Integer, Pair<Long, Integer>> postingDict, FileChannel finalRAF)
+      throws Throwable {
+    RandomAccessFile rawRAF = new RandomAccessFile(indexFile,"r");
+    FileChannel rawFC = rawRAF.getChannel();
+    polulatedPostDick(rawFC,postingDict);
+    List<Entry<Integer, Pair<Long, Integer>>> entryList = new ArrayList<>(postingDict.entrySet());
+    Collections.sort(entryList, new Comparator<Entry<Integer, Pair<Long, Integer>>>() {
+      @Override
+      public int compare(Entry<Integer, Pair<Long, Integer>> o1,
+          Entry<Integer, Pair<Long, Integer>> o2) {
+        // order it from large freq to low
+        return o2.getValue().getSecond().compareTo(o1.getValue().getSecond());
+      }
+    });
+    for (Entry<Integer, Pair<Long, Integer>> entry : entryList){
+      Long newLocation = finalRAF.position();
+      Long oldLocation = entry.getValue().getFirst();
+      rawFC.position(oldLocation);
+      PostingList tempPL = index.readPosting(rawFC);
+      index.writePosting(finalRAF,new PostingList(entry.getKey(),tempPL.getList()));
+      entry.getValue().setFirst(newLocation);
+    }
+    rawRAF.close();
+    finalRAF.close();
+  }
+
+  private static void polulatedPostDick(FileChannel combinedFC, Map<Integer, Pair<Long, Integer>> postingDict) throws Throwable {
     combinedFC.position(0);
     while(combinedFC.position() < combinedFC.size()){
       Long startingPosition = combinedFC.position();
@@ -262,13 +292,6 @@ public class Index {
       b1Temp = (b1Temp == null ? b1Itr.next(): b1Temp);
       b2Temp = (b2Temp == null ? b2Itr.next(): b2Temp);
       if (b1Temp.getTermId() == b2Temp.getTermId()){
-//        HashSet<Integer> duplicateRemovalSet = new HashSet<>();
-//        duplicateRemovalSet.addAll(b1Temp.getList());
-//        duplicateRemovalSet.addAll(b1Temp.getList());
-//        b1Temp.getList().clear();
-//        b1Temp.getList().addAll(duplicateRemovalSet);
-        // Since there is no duplicate with our block solution. We do not need to check.
-//        b1Temp.getList().addAll(b2Temp.getList());
         b1Temp = collisonForPostingLists(b1Temp,b2Temp);
         b2Temp = null;
       }else{
@@ -295,9 +318,6 @@ public class Index {
     }
   }
   private static PostingList collisonForPostingLists(PostingList list1, PostingList list2) {
-//    TreeSet<Integer> set = new TreeSet<>(list1.getList());
-//    set.addAll(list2.getList());
-//    return new PostingList(list1.getTermId(),new LinkedList<Integer>(set));
     List<Integer> merged = new LinkedList<>();
     List<Integer> list1itr = list1.getList();
     List<Integer> list2itr = list2.getList();
@@ -305,9 +325,6 @@ public class Index {
     int j = 0;
     int m = list1itr.size();
     int n = list2itr.size();
-//    printList("List1: "+ list1.getTermId(), list1.getList());
-//    printList("List2: "+list2.getTermId(), list2.getList());
-//    System.out.println("Before::"+list1.toString()+list2.toString());
     while(i<m && j < n){
       int head1 = list1itr.get(i);
       int head2 = list2itr.get(j);
