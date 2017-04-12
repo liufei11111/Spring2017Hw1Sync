@@ -6,18 +6,15 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -57,15 +54,7 @@ public class Index {
    * */
   private static void writePosting(FileChannel fc, PostingList posting)
       throws IOException {
-    writePosting(fc,posting,false);
-  }
-  private static void writePosting(FileChannel fc, PostingList posting, boolean isLastRound)
-      throws IOException {
     try {
-      // make sure that the doc id's are increasing
-      if (isLastRound){
-        Collections.sort(posting.getList());
-      }
       index.writePosting(fc, posting);
     } catch (Throwable throwable) {
       throw new IOException(throwable);
@@ -142,9 +131,7 @@ public class Index {
       File blockFile = new File(output, block.getName());
       blockQueue.add(blockFile);
       // both term id and doc id list will be sorted. TreeMap sorts the term id first and doc id will be sorted upon write
-      // Note that this is ordered by term id to facilitate a merge later. But, right before the last write, I will sort
-      // the index again for required optimization of reordering by frequency.
-      Map<Integer, Set<Integer>> termIdToDocIdMap = new HashMap<>();
+      Map<Integer, Set<Integer>> termIdToDocIdMap = new TreeMap<>();
       File blockDir = new File(root, block.getName());
       File[] filelist = blockDir.listFiles(filter);
 
@@ -162,7 +149,7 @@ public class Index {
           for (String token : tokens) {
             // update term dic and mapping between termId and docId list
             Integer tokenId = updateTermDic(token);
-            // within updateTermIdToDocIdMap PostingList has sorted docId
+            // within updateTermIdToDocIdMap PostingList has not sorted docId
             updateTermIdToDocIdMap(termIdToDocIdMap, tokenId, currDocId);
           }
         }
@@ -177,16 +164,11 @@ public class Index {
 
       RandomAccessFile bfc = new RandomAccessFile(blockFile, "rw");
       // each record is [termId_freq_list of docId's]
-      ArrayList<Entry<Integer,  Set<Integer>>> toSortList = new ArrayList<Entry<Integer, Set<Integer>>>(termIdToDocIdMap.entrySet());
-      Collections.sort(toSortList, new Comparator<Entry<Integer,  Set<Integer>>>() {
-        @Override
-        public int compare(Entry<Integer,  Set<Integer>> o1, Entry<Integer,  Set<Integer>> o2) {
-          // we first sort each block by the termId so that the merge is efficient and in the end, we will sort by freq to optimize query.
-          return o1.getKey().compareTo(o2.getKey());
-        }
-      });
       for (Map.Entry<Integer, Set<Integer>> entry : termIdToDocIdMap.entrySet()) {
+        // already sorted
         LinkedList<Integer> tempList = new LinkedList<>(entry.getValue());
+        // sort to make sure the doc list is sorted. Note that is is just on one PostingList not a block
+        Collections.sort(tempList);
         writePosting(bfc.getChannel(),new PostingList(entry.getKey(), tempList));
       }
 
@@ -196,19 +178,7 @@ public class Index {
 
     /* Required: output total number of files. */
     System.out.println(totalFileCount);
-    if (blockQueue.size() == 1){
-      // handle the case where there is only one block. Non-existent in dev_set. Just in case.
-      RandomAccessFile mf = new RandomAccessFile(blockQueue.get(0), "rw");
-      FileChannel combinedFC = mf.getChannel();
-      // starting from the beginning of the file again to construct the postingDict only for the last merged file
-      combinedFC.position(0);
-      while(combinedFC.position() < combinedFC.size()){
-        Long startingPosition = combinedFC.position();
-        PostingList tmp = index.readPosting(combinedFC);
-        postingDict.put(tmp.getTermId(),new Pair<>(startingPosition,tmp.getList().size()));
 
-      }
-    }
     /* Merge blocks */
     while (true) {
       if (blockQueue.size() <= 1)
@@ -216,7 +186,7 @@ public class Index {
 
       File b1 = blockQueue.removeFirst();
       File b2 = blockQueue.removeFirst();
-      boolean isLastMerge = blockQueue.size()==0;
+
       File combfile = new File(output, b1.getName() + "+" + b2.getName());
       if (!combfile.createNewFile()) {
         System.err.println("Create new block failure.");
@@ -227,17 +197,7 @@ public class Index {
       RandomAccessFile bf2 = new RandomAccessFile(b2, "r");
       RandomAccessFile mf = new RandomAccessFile(combfile, "rw");
       FileChannel combinedFC = mf.getChannel();
-      mergePostingLists(bf1.getChannel(),bf2.getChannel(),combinedFC, isLastMerge);
-      // starting from the beginning of the file again to construct the postingDict only for the last merged file
-      if (isLastMerge){
-        combinedFC.position(0);
-        while(combinedFC.position() < combinedFC.size()){
-          Long startingPosition = combinedFC.position();
-          PostingList tmp = index.readPosting(combinedFC);
-          postingDict.put(tmp.getTermId(),new Pair<>(startingPosition,tmp.getList().size()));
-
-        }
-      }
+      mergePostingLists(bf1.getChannel(),bf2.getChannel(),combinedFC, blockQueue.size()==0);
 
       bf1.close();
       bf2.close();
@@ -249,26 +209,10 @@ public class Index {
 
     /* Dump constructed index back into file system */
     File indexFile = blockQueue.removeFirst();
-    // before dumping the index sort using the freq so that the queries are optimized
-//    indexFile.renameTo(new File(output, "corpus.index"));
-    RandomAccessFile inputRAF = new RandomAccessFile(indexFile, "r");
-    FileChannel inputFC = inputRAF.getChannel();
-    List<Entry<Integer, Pair<Long, Integer>>> rightOrderToWrite = sortThePostingDicForFreq(postingDict);
-    File outputFile = new File(output, "corpus.index");
-    RandomAccessFile indexRAF = new RandomAccessFile(outputFile, "rw");
-    FileChannel outputFC = indexRAF.getChannel();
-    for (Entry<Integer, Pair<Long, Integer>> entry : rightOrderToWrite){
-      inputFC.position(entry.getValue().getFirst());
-      PostingList pl = index.readPosting(inputFC);
-      Long newLocation = outputFC.position();
-      // we need a new location for this PostingList
-      entry.getValue().setFirst(newLocation);
-      index.writePosting(outputFC,pl);
-    }
-    inputRAF.close();
-    indexFile.delete();
-    inputRAF.close();
-
+    indexFile.renameTo(new File(output, "corpus.index"));
+    // starting from the beginning of the file again
+    // TODO: create sorted by freq after this work
+    polulatedPostDick(indexFile, postingDict);
     BufferedWriter termWriter = new BufferedWriter(new FileWriter(new File(
         output, "term.dict")));
     for (String term : termDict.keySet()) {
@@ -291,25 +235,24 @@ public class Index {
     }
     postWriter.close();
   }
-  /*
-  * We are sorting the posting dic by freq high to low for query optimization
-  * */
-  private static List<Entry<Integer,Pair<Long,Integer>>> sortThePostingDicForFreq(Map<Integer, Pair<Long, Integer>> postingDict) {
-    ArrayList<Entry<Integer,Pair<Long,Integer>>> tempList = new ArrayList<>(postingDict.entrySet());
-    Collections.sort(tempList, new Comparator<Entry<Integer, Pair<Long, Integer>>>() {
-      @Override
-      public int compare(Entry<Integer, Pair<Long, Integer>> o1,
-          Entry<Integer, Pair<Long, Integer>> o2) {
-        return o2.getValue().getSecond().compareTo(o1.getValue().getSecond());
-      }
-    });
-    return tempList;
+
+  private static void polulatedPostDick(File indexFile,
+      Map<Integer, Pair<Long, Integer>> postingDict) throws Throwable {
+    RandomAccessFile finalRAF = new RandomAccessFile(indexFile,"r");
+    FileChannel combinedFC = finalRAF.getChannel();
+    combinedFC.position(0);
+    while(combinedFC.position() < combinedFC.size()){
+      Long startingPosition = combinedFC.position();
+      PostingList tmp = index.readPosting(combinedFC);
+      postingDict.put(tmp.getTermId(),new Pair<>(startingPosition,tmp.getList().size()));
+
+    }
   }
 
   private static void  mergePostingLists(FileChannel b1List, FileChannel b2List,FileChannel b12List, boolean isLastRound)
       throws Throwable {
     //TODO improve to no additional data structure just merge with initial block sorted and merge on the way
-//    List<PostingList> merged = new LinkedList<>();
+    List<PostingList> merged = new LinkedList<>();
     RAFIterator b1Itr = new RAFIterator(b1List);
     RAFIterator b2Itr = new RAFIterator(b2List);
     PostingList b1Temp = null;
@@ -343,7 +286,7 @@ public class Index {
       }
     }
     if (b2Temp != null){
-      writePosting(b12List,b2Temp,isLastRound);
+      merged.add(b2Temp);
       while(b2Itr.hasNext()){
         writePosting(b12List,b2Itr.next(),isLastRound);
       }
@@ -367,7 +310,7 @@ public class Index {
   private static void updateTermIdToDocIdMap(Map<Integer, Set<Integer>> termIdToDocIdMap, Integer tokenId,
       Integer currDocId) {
     if (!termIdToDocIdMap.containsKey(tokenId)){
-      // only need to be unique not ordered. only sort in the last round writing
+      // only need to be unique not ordered. only sort in the end
       termIdToDocIdMap.put(tokenId, new HashSet<Integer>());
     }
     termIdToDocIdMap.get(tokenId).add(currDocId);

@@ -216,7 +216,7 @@ public class Query {
       while((itr1.hasNext() || docId1 != null) && (itr2.hasNext() || docId2 != null)){
         docId1 = docId1 == null ? itr1.next(): docId1;
         docId2 = docId2 == null ? itr2.next(): docId2;
-        if (docId1.equals( docId2)){
+        if (docId1.equals(docId2)){
           merged.add(docId1);
           docId1 = null;
           docId2 = null;
