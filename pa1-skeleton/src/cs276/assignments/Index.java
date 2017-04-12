@@ -322,6 +322,18 @@ public class Index {
         head2 = null;
       }
     }
+    if (head1 != null){
+      merged.add(head1);
+      while(list1itr.hasNext()){
+        merged.add(list1itr.next());
+      }
+    }
+    if (head2 != null){
+      merged.add(head2);
+      while(list2itr.hasNext()){
+        merged.add(list2itr.next());
+      }
+    }
     printList("after merge:  ", merged);
     return new PostingList(list1.getTermId(), merged);
   }
