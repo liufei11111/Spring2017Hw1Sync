@@ -299,39 +299,35 @@ public class Index {
 //    set.addAll(list2.getList());
 //    return new PostingList(list1.getTermId(),new LinkedList<Integer>(set));
     List<Integer> merged = new LinkedList<>();
-    Iterator<Integer> list1itr = list1.getList().iterator();
-    Iterator<Integer> list2itr = list2.getList().iterator();
-    Integer head1 = null;
-    Integer head2 = null;
+    List<Integer> list1itr = list1.getList();
+    List<Integer> list2itr = list2.getList();
+    int i = 0;
+    int j = 0;
+    int m = list1itr.size();
+    int n = list2itr.size();
 //    printList("List1: "+ list1.getTermId(), list1.getList());
 //    printList("List2: "+list2.getTermId(), list2.getList());
 //    System.out.println("Before::"+list1.toString()+list2.toString());
-    while((head1 != null || list1itr.hasNext()) && (head2 != null) || list2itr.hasNext()){
-      head1 = head1 == null ? list1itr.next() : head1;
-      head2 = head2 == null ? list2itr.next() : head2;
-      if (head1.equals(head2)){
+    while(i<m && j < n){
+      int head1 = list1itr.get(i);
+      int head2 = list2itr.get(j);
+      if (head1 == head2){
         merged.add(head1);
-        head1 = null;
-        head2 = null;
+        ++i;
+        ++j;
       }else if (head1 < head2){
         merged.add(head1);
-        head1 = null;
+        ++i;
       }else{
         merged.add(head2);
-        head2 = null;
+        ++j;
       }
     }
-    if (head1 != null){
-      merged.add(head1);
-      while(list1itr.hasNext()){
-        merged.add(list1itr.next());
-      }
+    if (i<m){
+      merged.addAll(list1itr.subList(i,m));
     }
-    if (head2 != null){
-      merged.add(head2);
-      while(list2itr.hasNext()){
-        merged.add(list2itr.next());
-      }
+    if (j<n){
+      merged.addAll(list2itr.subList(j,n));
     }
 //    printList("after merge:  ", merged);
     return new PostingList(list1.getTermId(), merged);
