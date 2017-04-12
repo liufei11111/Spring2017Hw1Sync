@@ -6,7 +6,6 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileFilter;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -14,10 +13,10 @@ import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -197,7 +196,7 @@ public class Index {
       RandomAccessFile bf2 = new RandomAccessFile(b2, "r");
       RandomAccessFile mf = new RandomAccessFile(combfile, "rw");
       FileChannel combinedFC = mf.getChannel();
-      mergePostingLists(bf1.getChannel(),bf2.getChannel(),combinedFC, blockQueue.size()==0);
+      mergePostingLists(bf1.getChannel(),bf2.getChannel(),combinedFC);
 
       bf1.close();
       bf2.close();
@@ -249,7 +248,7 @@ public class Index {
     }
   }
 
-  private static void  mergePostingLists(FileChannel b1List, FileChannel b2List,FileChannel b12List, boolean isLastRound)
+  private static void  mergePostingLists(FileChannel b1List, FileChannel b2List,FileChannel b12List)
       throws Throwable {
     //TODO improve to no additional data structure just merge with initial block sorted and merge on the way
     List<PostingList> merged = new LinkedList<>();
@@ -267,30 +266,55 @@ public class Index {
 //        b1Temp.getList().clear();
 //        b1Temp.getList().addAll(duplicateRemovalSet);
         // Since there is no duplicate with our block solution. We do not need to check.
-        b1Temp.getList().addAll(b2Temp.getList());
+//        b1Temp.getList().addAll(b2Temp.getList());
+        b1Temp = collisonForPostingLists(b1Temp,b2Temp);
         b2Temp = null;
       }else{
         if (b1Temp.getTermId() > b2Temp.getTermId()){
-          writePosting(b12List,b2Temp,isLastRound);
+          writePosting(b12List,b2Temp);
           b2Temp = null;
         }else{
-          writePosting(b12List,b1Temp,isLastRound);
+          writePosting(b12List,b1Temp);
           b1Temp = null;
         }
       }
     }
     if (b1Temp != null){
-      writePosting(b12List,b1Temp,isLastRound);
+      writePosting(b12List,b1Temp);
       while(b1Itr.hasNext()){
-        writePosting(b12List,b1Itr.next(),isLastRound);
+        writePosting(b12List,b1Itr.next());
       }
     }
     if (b2Temp != null){
-      merged.add(b2Temp);
+      writePosting(b12List,b2Temp);
       while(b2Itr.hasNext()){
-        writePosting(b12List,b2Itr.next(),isLastRound);
+        writePosting(b12List,b2Itr.next());
       }
     }
+  }
+
+  private static PostingList collisonForPostingLists(PostingList list1, PostingList list2) {
+    List<Integer> merged = new LinkedList<>();
+    Iterator<Integer> list1itr = list1.getList().iterator();
+    Iterator<Integer> list2itr = list2.getList().iterator();
+    Integer head1 = null;
+    Integer head2 = null;
+    while((head1 != null || list1itr.hasNext()) && (head2 != null) || list2itr.hasNext()){
+      head1 = head1 == null ? list1itr.next() : head1;
+      head2 = head2 == null ? list2itr.next() : head2;
+      if (head1.equals(head2)){
+        merged.add(head1);
+        head1 = null;
+        head2 = null;
+      }else if (head1 < head2){
+        merged.add(head1);
+        head1 = null;
+      }else{
+        merged.add(head2);
+        head2 = null;
+      }
+    }
+    return new PostingList(list1.getTermId(), merged);
   }
 
   private static List<PostingList> parsePostingList(RandomAccessFile bf1) {
