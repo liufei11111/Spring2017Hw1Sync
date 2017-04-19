@@ -118,6 +118,7 @@ public class GammaIndex implements BaseIndex {
 
   @Override
   public void writePosting(FileChannel fc, PostingList p) throws Throwable {
+    System.err.println("Just in case");
     List<Byte> encoded_posting = new LinkedList<Byte>();
     int pre_doc_id = 0;
     int index = 0;
